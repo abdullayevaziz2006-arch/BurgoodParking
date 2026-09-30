@@ -73,6 +73,20 @@ const Dashboard = () => {
 
     socket.on('checkout_request', (data) => {
       console.log('Automated checkout request received:', data);
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.35);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.35);
+      } catch (e) {}
+
       setCheckoutAmount(data.fee);
       setCheckoutSession(data.session);
       setCheckoutDetails(data);
@@ -346,8 +360,8 @@ const Dashboard = () => {
 
       {/* Checkout Payment Modal */}
       {checkoutSession && (
-        <div className="fixed inset-0 z-50 bg-charcoal/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-2xl border border-surface-gray overflow-hidden shadow-lg animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 bg-charcoal/40 backdrop-blur-sm flex items-start justify-center p-4 pt-12 sm:pt-20">
+          <div className="bg-white w-full max-w-md rounded-2xl border border-surface-gray overflow-hidden shadow-2xl animate-modal-dropdown">
             {/* Modal Header */}
             <div className="p-6 border-b border-surface-gray flex items-center justify-between bg-academic-bg/20">
               <h3 className="font-bold text-charcoal text-base">To'lovni tasdiqlash</h3>

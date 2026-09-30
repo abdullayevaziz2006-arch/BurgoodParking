@@ -26,6 +26,22 @@ async function handleCameraWebhook(req, res) {
     let direction = 'IN'; 
     let lotId = req.body.lotId || null;
 
+    // Detect client IP and match with registered Device
+    const rawIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || req.ip || '';
+    const clientIp = rawIp.replace(/^.*:/, '');
+
+    let matchedDevice = null;
+    if (clientIp) {
+      matchedDevice = await prisma.device.findFirst({ where: { ipAddress: clientIp } });
+      if (matchedDevice) {
+        if (matchedDevice.type) direction = matchedDevice.type;
+        if (matchedDevice.lotId) lotId = matchedDevice.lotId;
+      }
+    }
+
+    if (req.query.direction) direction = req.query.direction.toUpperCase();
+    if (req.body.direction) direction = req.body.direction.toUpperCase();
+
     if (req.files && req.files.length > 0) {
       for (const file of req.files) {
         const isXml = file.mimetype === 'application/xml' || 
@@ -56,7 +72,6 @@ async function handleCameraWebhook(req, res) {
     if (!plateNumber && req.body.plateNumber) {
       plateNumber = req.body.plateNumber;
     }
-    if (req.body.direction) direction = req.body.direction;
 
     if (!plateNumber) {
       console.log('Webhook received but no plate number found.');
@@ -96,6 +111,27 @@ async function handleCameraWebhook(req, res) {
 
       await prisma.log.create({ data: { type: 'ENTRY', carId: car.id } });
       socketService.emit('car_entry', { plateNumber, time: new Date() });
+
+      // Trigger physical barrier open for entry camera
+      if (matchedDevice) {
+        barrierService.triggerBarrierOpen(
+          [matchedDevice.ipAddress],
+          matchedDevice.username || 'admin',
+          matchedDevice.password || 'Q135246q',
+          matchedDevice.model || 'DS-TCG205-E'
+        );
+      } else {
+        // Fallback to entry devices if matchedDevice not set
+        const entryDevice = await prisma.device.findFirst({ where: { type: 'ENTRY' } });
+        if (entryDevice) {
+          barrierService.triggerBarrierOpen(
+            [entryDevice.ipAddress],
+            entryDevice.username || 'admin',
+            entryDevice.password || 'Q135246q',
+            entryDevice.model || 'DS-TCG205-E'
+          );
+        }
+      }
 
       return res.status(200).json({ allowed: true, action: 'OPEN_BARRIER' });
 
@@ -140,6 +176,25 @@ async function handleCameraWebhook(req, res) {
       });
 
       if (fee === 0) {
+        // Free exit (subscriber or within free minutes) - open barrier physically
+        if (matchedDevice) {
+          barrierService.triggerBarrierOpen(
+            [matchedDevice.ipAddress],
+            matchedDevice.username || 'admin',
+            matchedDevice.password || 'Q135246q',
+            matchedDevice.model || 'DS-TCG205-E'
+          );
+        } else {
+          const exitDevice = await prisma.device.findFirst({ where: { type: 'EXIT' } });
+          if (exitDevice) {
+            barrierService.triggerBarrierOpen(
+              [exitDevice.ipAddress],
+              exitDevice.username || 'admin',
+              exitDevice.password || 'Q135246q',
+              exitDevice.model || 'DS-TCG205-E'
+            );
+          }
+        }
         return res.status(200).json({ allowed: true, action: 'OPEN_BARRIER', fee: 0 });
       } else {
         // Emit automatic popup trigger for cashiers
