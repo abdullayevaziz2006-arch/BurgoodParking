@@ -261,13 +261,15 @@ const Dashboard = () => {
         <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-center min-h-[110px]">
           <span className="text-[11px] font-extrabold text-muted-slate uppercase tracking-wider">KAMERALAR VA TIZIM</span>
           <div className="flex items-center gap-2 mt-3">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span className={`w-2.5 h-2.5 rounded-full ${devices.length > 0 ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`}></span>
             <p className="text-xl font-extrabold text-charcoal">
-              {devices.length || 2} ta kamera faol
+              {devices.length > 0 ? `${devices.length} ta kamera faol` : "Kameralar ulanmagan"}
             </p>
           </div>
-          <p className="text-[11px] text-muted-slate mt-1 font-semibold">
-            192.168.2.64 (Kirish) &bull; 192.168.2.70 (Chiqish)
+          <p className="text-[11px] text-muted-slate mt-1 font-semibold truncate">
+            {devices.length > 0 
+              ? devices.map(d => `${d.ipAddress} (${d.type === 'ENTRY' ? 'Kirish' : 'Chiqish'})`).join(' • ')
+              : "Yangi kamera qo'shish uchun 'Kameralar' bo'limiga o'ting"}
           </p>
         </div>
 
