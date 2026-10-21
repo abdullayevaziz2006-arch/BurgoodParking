@@ -59,10 +59,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$WshShell = New-Object -ComObject WScript.Shell; " ^
   "$DesktopPath = [Environment]::GetFolderPath('Desktop'); " ^
   "$Shortcut = $WshShell.CreateShortcut((Join-Path $DesktopPath 'BURGOOD Access Control.lnk')); " ^
-  "$Shortcut.TargetPath = (Join-Path '%~dp0' 'start_smartpark.bat'); " ^
+  "$Shortcut.TargetPath = 'wscript.exe'; " ^
+  "$Shortcut.Arguments = '\"' + (Join-Path '%~dp0' 'start_silent.vbs') + '\"'; " ^
   "$Shortcut.WorkingDirectory = '%~dp0'; " ^
   "$Shortcut.WindowStyle = 7; " ^
-  "if (Test-Path '%~dp0app_icon.ico') { $Shortcut.IconLocation = '%~dp0app_icon.ico, 0' }; " ^
+  "if (Test-Path '%~dp0burgood.ico') { $Shortcut.IconLocation = '%~dp0burgood.ico, 0' }; " ^
   "$Shortcut.Description = 'BURGOOD Access Control & Parking System'; " ^
   "$Shortcut.Save();"
 
