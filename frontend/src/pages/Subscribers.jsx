@@ -22,7 +22,14 @@ const Subscribers = () => {
   const [plateNumber, setPlateNumber] = useState('');
   const [cardNo, setCardNo] = useState('');
   const [months, setMonths] = useState(1);
-  const [amount, setAmount] = useState('');
+  const [amount, setAmount] = useState(50000);
+  const [tariffMonthlyPrices, setTariffMonthlyPrices] = useState({
+    1: 50000,
+    3: 140000,
+    6: 260000,
+    12: 480000,
+    24: 900000
+  });
   const [formLoading, setFormLoading] = useState(false);
 
   // Excel file upload
@@ -39,9 +46,34 @@ const Subscribers = () => {
     }
   };
 
+  const fetchTariff = async () => {
+    try {
+      const res = await axios.get('/api/tariff');
+      if (res.data?.monthlyPrices) {
+        const parsed = typeof res.data.monthlyPrices === 'string'
+          ? JSON.parse(res.data.monthlyPrices)
+          : res.data.monthlyPrices;
+        setTariffMonthlyPrices(parsed);
+        if (parsed[1]) {
+          setAmount(parsed[1]);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching tariff prices:', err);
+    }
+  };
+
   useEffect(() => {
     fetchSubscribers();
+    fetchTariff();
   }, []);
+
+  const handleMonthsChange = (newMonths) => {
+    setMonths(newMonths);
+    if (tariffMonthlyPrices && tariffMonthlyPrices[newMonths] !== undefined) {
+      setAmount(tariffMonthlyPrices[newMonths]);
+    }
+  };
 
   const handleAddSubscriber = async (e) => {
     e.preventDefault();
@@ -58,7 +90,7 @@ const Subscribers = () => {
       setPlateNumber('');
       setCardNo('');
       setMonths(1);
-      setAmount('');
+      setAmount(tariffMonthlyPrices[1] || 50000);
       fetchSubscribers();
       alert("Obunachi muvaffaqiyatli qo'shildi!");
     } catch (err) {
@@ -131,7 +163,7 @@ const Subscribers = () => {
     <div className="flex-1 p-8 bg-academic-bg space-y-8 overflow-y-auto max-h-[calc(100vh-4rem)]">
       
       {/* Top Sync & Stats bar */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-xl border border-surface-gray">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs">
         <div>
           <h3 className="font-bold text-charcoal text-base">Jami obunachilar soni</h3>
           <p className="text-2xl font-extrabold text-ranch-red mt-1">{subscribers.length} ta</p>
@@ -155,7 +187,7 @@ const Subscribers = () => {
         <div className="lg:col-span-1 space-y-8">
           
           {/* Form: Add Single Subscriber */}
-          <div className="bg-white p-6 rounded-xl border border-surface-gray space-y-5">
+          <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-5">
             <div className="flex items-center gap-2 pb-3 border-b border-surface-gray">
               <UserPlus className="w-5 h-5 text-ranch-red" />
               <h3 className="font-bold text-charcoal text-sm">Yangi obunachi qo'shish</h3>
@@ -190,7 +222,7 @@ const Subscribers = () => {
                   <label className="block text-xs font-bold text-muted-slate uppercase tracking-wider mb-1.5">Muddati (oy)</label>
                   <select
                     value={months}
-                    onChange={(e) => setMonths(e.target.value)}
+                    onChange={(e) => handleMonthsChange(parseInt(e.target.value))}
                     className="w-full px-4 py-2.5 rounded-lg border border-surface-gray text-sm focus:outline-none focus:border-ranch-red focus:ring-2 focus:ring-ranch-red/20 transition-all font-semibold"
                   >
                     {[1, 3, 6, 12, 24].map((m) => (
@@ -201,13 +233,15 @@ const Subscribers = () => {
 
                 <div>
                   <label className="block text-xs font-bold text-muted-slate uppercase tracking-wider mb-1.5">To'lov summasi</label>
-                  <input
-                    type="number"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    placeholder="Masalan, 50000"
-                    className="w-full px-4 py-2.5 rounded-lg border border-surface-gray text-sm focus:outline-none focus:border-ranch-red focus:ring-2 focus:ring-ranch-red/20 transition-all font-semibold font-sans"
-                  />
+                  <div className="relative">
+                    <input
+                      type="text"
+                      readOnly
+                      value={amount ? `${Number(amount).toLocaleString('uz-UZ')} so'm` : "0 so'm"}
+                      className="w-full px-4 py-2.5 rounded-lg border border-surface-gray text-sm font-bold text-charcoal bg-gray-50/80 cursor-default focus:outline-none font-sans"
+                    />
+                  </div>
+                  <span className="text-[10px] text-muted-slate block mt-1">Tarifdan avtomatik</span>
                 </div>
               </div>
 
@@ -226,7 +260,7 @@ const Subscribers = () => {
           </div>
 
           {/* Form: Excel Import */}
-          <div className="bg-white p-6 rounded-xl border border-surface-gray space-y-4">
+          <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
             <div className="flex items-center gap-2 pb-3 border-b border-surface-gray">
               <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
               <h3 className="font-bold text-charcoal text-sm">Excel'dan import qilish</h3>
@@ -265,7 +299,7 @@ const Subscribers = () => {
 
         {/* Right Side: Subscribers Table */}
         <div className="lg:col-span-2">
-          <div className="bg-white rounded-xl border border-surface-gray overflow-hidden">
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
             <div className="p-4 border-b border-surface-gray bg-academic-bg/10 flex items-center justify-between">
               <h3 className="font-bold text-charcoal text-sm">Faol obunachilar ro'yxati</h3>
             </div>

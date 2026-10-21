@@ -1,0 +1,7 @@
+[
+  "../script/lib/seajs/seajs/sea-2.1.1.min.js",
+  "../script/lib/three/three.js",
+  "../script/lib/three/OrbitControls.js",
+  "../script/lib/seajs/config/sea-config.js?version=",
+  "../script/lib/angularjs/angular-ui-router/angular-ui-router.js?version="
+]

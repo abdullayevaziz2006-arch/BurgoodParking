@@ -53,15 +53,20 @@ model Car {
 }
 
 model Tariff {
-  id          String   @id @default(uuid())
-  name        String
-  pricePerMin Float
-  freeMinutes Int      @default(0)
-  maxDaily    Float?
-  lotId       String
-  lot         ParkingLot @relation(fields: [lotId], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(uuid())
+  name          String
+  billingType   String   @default("HOURLY") // HOURLY, MINUTE, FIXED
+  pricePerHour  Float    @default(5000)
+  pricePerMin   Float    @default(100)
+  fixedFee      Float    @default(5000)
+  maxHours      Int?     @default(4)
+  freeMinutes   Int      @default(10)
+  maxDaily      Float?
+  monthlyPrices String?  // JSON: {"1": 50000, "3": 140000, "6": 260000, "12": 480000, "24": 900000}
+  lotId         String
+  lot           ParkingLot @relation(fields: [lotId], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
 model ParkingSession {
@@ -74,6 +79,8 @@ model ParkingSession {
   exitTime    DateTime?
   fee         Float    @default(0)
   status      String   @default("ACTIVE") // ACTIVE, COMPLETED, UNPAID
+  entryPhoto  String?
+  exitPhoto   String?
   payments    Payment[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

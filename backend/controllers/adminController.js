@@ -70,19 +70,20 @@ async function updateParkingLot(req, res) {
 
 async function getDashboardStats(req, res) {
   try {
+    const lotFilter = req.user?.parkingLotId ? { lotId: req.user.parkingLotId } : {};
     const activeSessions = await prisma.parkingSession.count({
-      where: { status: 'ACTIVE', lotId: req.user.parkingLotId }
+      where: { status: 'ACTIVE', ...lotFilter }
     });
 
     const cashiersCount = await prisma.user.count({
-      where: { role: 'CASHIER', parkingLotId: req.user.parkingLotId }
+      where: { role: 'CASHIER' }
     });
 
     const totalRevenueResult = await prisma.payment.aggregate({
       _sum: { amount: true },
       where: {
         status: 'SUCCESS',
-        session: { lotId: req.user.parkingLotId }
+        ...(req.user?.parkingLotId ? { session: { lotId: req.user.parkingLotId } } : {})
       }
     });
 
@@ -100,18 +101,35 @@ async function getDashboardStats(req, res) {
 
 async function getTariff(req, res) {
   try {
-    const tariff = await prisma.tariff.findFirst();
+    let tariff = await prisma.tariff.findFirst();
     if (!tariff) {
       const firstLot = await prisma.parkingLot.findFirst();
       if (firstLot) {
-        const newTariff = await prisma.tariff.create({
-          data: { name: 'Standard', pricePerMin: 100, freeMinutes: 10, lotId: firstLot.id }
+        tariff = await prisma.tariff.create({
+          data: { 
+            name: 'Standard',
+            billingType: 'HOURLY',
+            pricePerHour: 5000,
+            pricePerMin: 100,
+            fixedFee: 5000,
+            maxHours: 4,
+            freeMinutes: 10, 
+            monthlyPrices: JSON.stringify({ 1: 50000, 3: 140000, 6: 260000, 12: 480000, 24: 900000 }),
+            lotId: firstLot.id 
+          }
         });
-        return res.json(newTariff);
+      } else {
+        return res.json({ billingType: 'HOURLY', pricePerHour: 5000, pricePerMin: 100, fixedFee: 5000, maxHours: 4, freeMinutes: 10, monthlyPrices: null });
       }
-      return res.json({ pricePerMin: 0, freeMinutes: 0 });
     }
-    res.json(tariff);
+    res.json({
+      ...tariff,
+      pricePerHour: tariff.pricePerHour || tariff.pricePerMin || 5000,
+      pricePerMin: tariff.pricePerMin || 100,
+      fixedFee: tariff.fixedFee !== undefined ? tariff.fixedFee : 5000,
+      billingType: tariff.billingType || 'HOURLY',
+      maxHours: tariff.maxHours !== undefined ? tariff.maxHours : 4
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -119,23 +137,63 @@ async function getTariff(req, res) {
 
 async function saveTariff(req, res) {
   try {
-    const { pricePerMin, freeMinutes } = req.body;
+    const { 
+      billingType = 'HOURLY', 
+      pricePerHour, 
+      pricePerMin, 
+      fixedFee, 
+      maxHours, 
+      freeMinutes, 
+      monthlyPrices 
+    } = req.body;
+
     const firstLot = await prisma.parkingLot.findFirst();
     if (!firstLot) return res.status(404).json({ error: 'No parking lot found' });
 
+    const hourlyRate = parseFloat(pricePerHour) || 5000;
+    const minRate = parseFloat(pricePerMin) || 100;
+    const fixedRate = parseFloat(fixedFee) || 5000;
+    const maxH = maxHours !== undefined && maxHours !== '' ? parseInt(maxHours) : null;
+    const freeM = parseInt(freeMinutes) || 0;
+
     const existing = await prisma.tariff.findFirst({ where: { lotId: firstLot.id } });
+    const formattedMonthly = typeof monthlyPrices === 'object' && monthlyPrices !== null
+      ? JSON.stringify(monthlyPrices)
+      : (monthlyPrices || null);
+
+    const updateData = {
+      billingType: ['HOURLY', 'MINUTE', 'FIXED'].includes(billingType) ? billingType : 'HOURLY',
+      pricePerHour: hourlyRate,
+      pricePerMin: minRate,
+      fixedFee: fixedRate,
+      maxHours: maxH,
+      freeMinutes: freeM
+    };
+    if (monthlyPrices !== undefined) {
+      updateData.monthlyPrices = formattedMonthly;
+    }
+
     let tariff;
     if (existing) {
       tariff = await prisma.tariff.update({
         where: { id: existing.id },
-        data: { pricePerMin: parseFloat(pricePerMin), freeMinutes: parseInt(freeMinutes) }
+        data: updateData
       });
     } else {
       tariff = await prisma.tariff.create({
-        data: { name: 'Standard', pricePerMin: parseFloat(pricePerMin), freeMinutes: parseInt(freeMinutes), lotId: firstLot.id }
+        data: { 
+          name: 'Standard', 
+          ...updateData,
+          monthlyPrices: formattedMonthly,
+          lotId: firstLot.id 
+        }
       });
     }
-    res.json(tariff);
+    res.json({
+      ...tariff,
+      pricePerHour: tariff.pricePerHour,
+      billingType: tariff.billingType
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -172,6 +230,16 @@ async function createDevice(req, res) {
         lotId: targetLotId
       }
     });
+
+    if (process.env.ALERT_STREAM === '1') {
+      try {
+        const alertStreamService = require('../services/alertStreamService');
+        alertStreamService.connectCameraStream(newDevice);
+      } catch (streamErr) {
+        console.error('Failed to connect alert stream for new device:', streamErr);
+      }
+    }
+
     res.json(newDevice);
   } catch (e) {
     res.status(500).json({ error: e.message });

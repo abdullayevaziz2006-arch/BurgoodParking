@@ -11,13 +11,16 @@ import {
   LogOut, 
   ShieldAlert, 
   X,
-  CreditCard
+  CreditCard,
+  Lock,
+  Unlock
 } from 'lucide-react';
 
 const Dashboard = () => {
   const [stats, setStats] = useState({ totalRevenue: 0, activeSessions: 0, cashiersCount: 0 });
   const [activeSessions, setActiveSessions] = useState([]);
   const [logs, setLogs] = useState([]);
+  const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(true);
   
   // Checkout modal state
@@ -31,18 +34,40 @@ const Dashboard = () => {
   // Fetch all data
   const fetchData = async () => {
     try {
-      // Fetch stats
-      const statsRes = await axios.get('/api/admin/dashboard-stats');
-      setStats(statsRes.data);
+      // 1. Fetch devices (cameras) first
+      try {
+        const devicesRes = await axios.get('/api/devices');
+        setDevices(devicesRes.data || []);
+      } catch (e) {
+        console.error('Error fetching devices:', e.message);
+      }
 
-      // Fetch sessions
-      const sessionsRes = await axios.get('/api/sessions');
-      const active = sessionsRes.data.filter(s => s.status === 'ACTIVE');
-      setActiveSessions(active);
+      // 2. Fetch sessions
+      try {
+        const sessionsRes = await axios.get('/api/sessions');
+        const list = Array.isArray(sessionsRes.data) ? sessionsRes.data : (sessionsRes.data?.sessions || []);
+        const active = list.filter(s => s.status === 'ACTIVE');
+        setActiveSessions(active);
+      } catch (e) {
+        console.error('Error fetching sessions:', e.message);
+      }
 
-      // Fetch recent logs
-      const logsRes = await axios.get('/api/logs');
-      setLogs(logsRes.data.slice(0, 5));
+      // 3. Fetch stats
+      try {
+        const statsRes = await axios.get('/api/admin/dashboard-stats');
+        if (statsRes.data) setStats(statsRes.data);
+      } catch (e) {
+        console.warn('Dashboard stats warn:', e.message);
+      }
+
+      // 4. Fetch recent logs
+      try {
+        const logsRes = await axios.get('/api/logs');
+        const logList = Array.isArray(logsRes.data) ? logsRes.data : [];
+        setLogs(logList.slice(0, 5));
+      } catch (e) {
+        console.error('Error fetching logs:', e.message);
+      }
     } catch (err) {
       console.error('Error fetching dashboard data:', err.message);
     } finally {
@@ -113,22 +138,30 @@ const Dashboard = () => {
     try {
       const exitTime = new Date().toISOString();
       const entryDate = new Date(session.entryTime);
-      const diffMins = Math.ceil((new Date() - entryDate) / 60000);
+      const diffMins = Math.max(1, Math.ceil((new Date() - entryDate) / 60000));
       
       const tariffRes = await axios.get('/api/tariff');
       const tariff = tariffRes.data;
       
       let fee = 0;
+      let billableHours = 0;
       const isSub = session.car.isSubscriber && session.car.subscriberEnd && new Date(session.car.subscriberEnd) > new Date();
 
-      const freeMinutes = (isSub || !tariff) ? 0 : tariff.freeMinutes;
-      if (!isSub && tariff) {
-        let billableMins = diffMins - tariff.freeMinutes;
-        if (billableMins > 0) {
-          fee = billableMins * tariff.pricePerMin;
-          if (tariff.maxDaily && fee > tariff.maxDaily) fee = tariff.maxDaily;
+      const pricePerHour = tariff ? (tariff.pricePerHour || tariff.pricePerMin || 5000) : 5000;
+      const freeMinutes = (isSub || !tariff) ? 0 : (tariff.freeMinutes || 0);
+
+      if (!isSub) {
+        if (diffMins > freeMinutes) {
+          billableHours = Math.ceil(diffMins / 60);
+          if (billableHours < 1) billableHours = 1;
+          if (billableHours > 4) billableHours = 4;
+          fee = billableHours * pricePerHour;
         }
       }
+
+      const durHrs = Math.floor(diffMins / 60);
+      const durMinsRem = diffMins % 60;
+      const durationText = durHrs > 0 ? (durMinsRem > 0 ? `${durHrs} soat ${durMinsRem} daqiqa` : `${durHrs} soat`) : `${durMinsRem} daqiqa`;
       
       setCheckoutAmount(fee);
       setCheckoutSession(session);
@@ -136,8 +169,10 @@ const Dashboard = () => {
         plateNumber: session.car.plateNumber,
         entryTime: session.entryTime,
         durationMins: diffMins,
+        durationText,
+        billableHours,
+        pricePerHour,
         freeMinutes: freeMinutes,
-        overtimeMins: Math.max(0, diffMins - freeMinutes),
         fee
       });
       setPaymentMethod('CASH');
@@ -175,9 +210,6 @@ const Dashboard = () => {
         });
       }
       
-      // Auto open barrier for manual checkout
-      await axios.post('/api/barrier/open');
-      
       setCheckoutSession(null);
       fetchData();
     } catch (err) {
@@ -203,41 +235,40 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         
         {/* Revenue Card */}
-        <div className="bg-white p-6 rounded-xl border border-surface-gray flex flex-col justify-center min-h-[110px]">
-          <span className="text-[11px] font-extrabold text-muted-slate uppercase tracking-wider">TOTAL REVENUE</span>
-          <p className="text-3xl font-extrabold text-ranch-red font-sans mt-3">
+        <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-center min-h-[110px]">
+          <span className="text-[11px] font-extrabold text-muted-slate uppercase tracking-wider">JAMI TUSHUM</span>
+          <p className="text-3xl font-extrabold text-[#0084ff] font-sans mt-3">
             {(stats.totalRevenue || 0).toLocaleString('uz-UZ')} UZS
           </p>
         </div>
 
         {/* Active Occupancy Card */}
-        <div className="bg-white p-6 rounded-xl border border-surface-gray flex flex-col justify-center min-h-[110px]">
-          <span className="text-[11px] font-extrabold text-muted-slate uppercase tracking-wider">ACTIVE CARS</span>
+        <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-center min-h-[110px]">
+          <span className="text-[11px] font-extrabold text-muted-slate uppercase tracking-wider">FAOL AVTOMOBILLAR</span>
           <p className="text-3xl font-extrabold text-charcoal mt-3">
             {stats.activeSessions || 0} <span className="text-base text-muted-slate font-medium">/ 100</span>
           </p>
           {/* Occupancy Indicator Bar */}
-          <div className="w-full bg-surface-gray h-2 rounded-full overflow-hidden mt-4">
+          <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden mt-4">
             <div 
-              className="bg-ranch-red h-full rounded-full transition-all duration-500" 
+              className="bg-[#0084ff] h-full rounded-full transition-all duration-500 shadow-sm shadow-[#0084ff]/50" 
               style={{ width: `${Math.min(((stats.activeSessions || 0) / 100) * 100, 100)}%` }}
             ></div>
           </div>
         </div>
 
-        {/* Cashiers/Devices heartbeat card */}
-        <div className="bg-white p-6 rounded-xl border border-surface-gray flex flex-col justify-center min-h-[110px]">
-          <span className="text-[11px] font-extrabold text-muted-slate uppercase tracking-wider">CASHIER STATUS</span>
-          <div className="flex items-center gap-1.5 mt-4">
-            <div className="flex gap-1 items-center">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            </div>
-            <p className="text-sm font-bold text-charcoal ml-2">
-              {stats.cashiersCount || 3} Cashiers Active
+        {/* Kameralar va Tizim holati Card */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-center min-h-[110px]">
+          <span className="text-[11px] font-extrabold text-muted-slate uppercase tracking-wider">KAMERALAR VA TIZIM</span>
+          <div className="flex items-center gap-2 mt-3">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <p className="text-xl font-extrabold text-charcoal">
+              {devices.length || 2} ta kamera faol
             </p>
           </div>
+          <p className="text-[11px] text-muted-slate mt-1 font-semibold">
+            192.168.2.64 (Kirish) &bull; 192.168.2.70 (Chiqish)
+          </p>
         </div>
 
       </div>
@@ -245,18 +276,69 @@ const Dashboard = () => {
       {/* Main Split Panel */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         
-        {/* Left Side: Live Video Streams */}
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <LiveCameraFeed ip="10.70.5.8" name="Kirish" />
-            <LiveCameraFeed ip="10.70.5.7" name="Chiqish" />
+        {/* Left Side: Live Video Streams & Quick Barrier Controls */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-bold text-charcoal">Jonli kameralar va Shlagbaum</h3>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={async () => {
+                  try {
+                    await axios.post('/api/barrier/open');
+                    alert("Shlagbaun ochildi (35s taymer)!");
+                  } catch (e) {
+                    alert("Xatolik: " + (e.response?.data?.error || e.message));
+                  }
+                }}
+                className="py-1.5 px-3 rounded-lg border border-emerald-600 bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+                title="Barcha shlagbaunlarni ochish (35 soniya taymer bilan)"
+              >
+                <Unlock className="w-3.5 h-3.5" />
+                <span>Ochish (35s)</span>
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    await axios.post('/api/barrier/close');
+                    alert("Shlagbaun yopildi!");
+                  } catch (e) {
+                    alert("Xatolik: " + (e.response?.data?.error || e.message));
+                  }
+                }}
+                className="py-1.5 px-3 rounded-lg border border-charcoal bg-charcoal text-white hover:bg-black text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+                title="Ehtiyot shart shlagbaunni darhol yopish"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>Yopish (Close)</span>
+              </button>
+            </div>
           </div>
+          {devices.length === 0 ? (
+            <div className="bg-white rounded-xl border border-surface-gray p-8 flex flex-col items-center justify-center gap-3 text-center min-h-[200px]">
+              <svg className="w-10 h-10 text-muted-slate opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" />
+              </svg>
+              <p className="text-sm font-semibold text-muted-slate">Hech qanday kamera qo'shilmagan</p>
+              <p className="text-xs text-muted-slate">Qurilmalar bo'limidan kamera qo'shing</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {devices.map(device => (
+                <LiveCameraFeed
+                  key={device.id}
+                  ip={device.ipAddress}
+                  name={device.name}
+                  deviceType={device.type}
+                />
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Right Side: Active Parked Cars Table */}
         <div className="space-y-4">
           <h3 className="text-lg font-bold text-charcoal">Active Vehicles in Parking</h3>
-          <div className="bg-white rounded-xl border border-surface-gray overflow-hidden">
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
             <div className="overflow-x-auto max-h-[360px]">
               <table className="w-full text-left border-collapse">
                 <thead>
@@ -324,7 +406,7 @@ const Dashboard = () => {
             <span>Refresh</span>
           </button>
         </div>
-        <div className="bg-white rounded-xl border border-surface-gray overflow-hidden p-6 font-mono text-[11px] text-muted-slate space-y-2">
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden p-6 font-mono text-[11px] text-muted-slate space-y-2">
           {logs.length === 0 ? (
             <div className="text-center py-2">No system logs available</div>
           ) : (
@@ -389,19 +471,30 @@ const Dashboard = () => {
                   
                   {checkoutDetails && (
                     <>
+                      <div className="text-muted-slate">Parkovkada turgan vaqti:</div>
+                      <div className="font-bold text-ranch-red text-right">
+                        {checkoutDetails.durationText || (
+                          Math.floor(checkoutDetails.durationMins / 60) > 0 
+                            ? `${Math.floor(checkoutDetails.durationMins / 60)} soat ${checkoutDetails.durationMins % 60} daqiqa`
+                            : `${checkoutDetails.durationMins} daqiqa`
+                        )}
+                      </div>
+
                       <div className="text-muted-slate">Bepul kutish vaqti:</div>
                       <div className="font-bold text-charcoal text-right">
-                        {checkoutDetails.freeMinutes} daqiqa
+                        {checkoutDetails.freeMinutes || 0} daqiqa
                       </div>
                       
-                      <div className="text-muted-slate">Ortiqcha turgan vaqti:</div>
-                      <div className="font-bold text-ranch-red text-right">
-                        {checkoutDetails.overtimeMins} daqiqa
-                      </div>
-                      
-                      <div className="text-muted-slate">Umumiy vaqt:</div>
+                      <div className="text-muted-slate">Hisoblangan to'lov vaqti:</div>
                       <div className="font-bold text-charcoal text-right">
-                        {checkoutDetails.durationMins} daqiqa
+                        {checkoutDetails.billableHours 
+                          ? `${checkoutDetails.billableHours} soat ${checkoutDetails.billableHours >= 4 ? '(Maksimal 4 soat)' : ''}` 
+                          : 'Bepul'}
+                      </div>
+
+                      <div className="text-muted-slate">Soatlik tarif:</div>
+                      <div className="font-bold text-charcoal text-right">
+                        {(checkoutDetails.pricePerHour || 5000).toLocaleString('uz-UZ')} UZS
                       </div>
                     </>
                   )}

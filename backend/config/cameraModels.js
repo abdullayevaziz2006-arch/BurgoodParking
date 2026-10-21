@@ -26,6 +26,7 @@ const CAMERA_MODELS = {
     label: 'DS-TCG406 (Hikvision ITC)',
     getBarrierOpenRequests: () => [
       { method: 'PUT', url: '/ISAPI/ITC/Entrance/barrierGateCtrl', data: xmlBuilder.buildTCG205BarrierCtrlXml(1, 'on') },
+      { method: 'PUT', url: '/ISAPI/Parking/channels/1/barrierGate', data: xmlBuilder.buildBarrierGateOpenXml() },
     ]
   }
 };

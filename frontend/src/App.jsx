@@ -16,8 +16,11 @@ const AppContent = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-academic-bg flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-3 border-ranch-red border-t-transparent"></div>
+      <div className="min-h-screen bg-[#f1f5f9] flex flex-col items-center justify-center gap-3">
+        <div className="animate-spin rounded-full h-10 w-10 border-3 border-[#0084ff] border-t-transparent shadow-lg shadow-[#0084ff]/20"></div>
+        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest font-mono">
+          Burgood yuklanmoqda...
+        </p>
       </div>
     );
   }
@@ -36,7 +39,7 @@ const AppContent = () => {
 
   return (
     <Router>
-      <div className="flex h-screen w-screen overflow-hidden bg-academic-bg">
+      <div className="flex h-screen w-screen overflow-hidden bg-[#f1f5f9] text-[#0f172a]">
         {/* Left Navigation Sidebar */}
         <Sidebar />
 
@@ -46,15 +49,17 @@ const AppContent = () => {
           <Header />
 
           {/* Main Pages Router */}
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/sessions" element={<ActiveCars />} />
-            <Route path="/subscribers" element={<Subscribers />} />
-            <Route path="/devices" element={<Devices />} />
-            <Route path="/tariffs" element={<Tariffs />} />
-            <Route path="/logs" element={<Logs />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+          <main className="flex-1 overflow-y-auto bg-[#f1f5f9]">
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/sessions" element={<ActiveCars />} />
+              <Route path="/subscribers" element={<Subscribers />} />
+              <Route path="/devices" element={<Devices />} />
+              <Route path="/tariffs" element={<Tariffs />} />
+              <Route path="/logs" element={<Logs />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </main>
         </div>
       </div>
     </Router>

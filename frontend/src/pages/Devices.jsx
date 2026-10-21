@@ -138,7 +138,7 @@ const Devices = () => {
         
         {/* Left Side: Create Device form */}
         <div className="lg:col-span-1">
-          <div className="bg-white p-6 rounded-xl border border-surface-gray space-y-5">
+          <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-5">
             <div className="flex items-center gap-2 pb-3 border-b border-surface-gray">
               <Camera className="w-5 h-5 text-ranch-red" />
               <h3 className="font-bold text-charcoal text-sm">Yangi kamera qo'shish</h3>
@@ -259,7 +259,7 @@ const Devices = () => {
                 const syncing = syncingStates[device.id] || false;
 
                 return (
-                  <div key={device.id} className="bg-white rounded-xl border border-surface-gray p-6 flex flex-col justify-between space-y-4">
+                  <div key={device.id} className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-6 flex flex-col justify-between space-y-4">
                     {/* Device Header */}
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-3">

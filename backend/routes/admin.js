@@ -12,7 +12,7 @@ router.delete('/admin/cashiers/:id', authenticateToken, requireRole('ADMIN'), ad
 router.put('/admin/parking-lot', authenticateToken, requireRole('ADMIN'), adminController.updateParkingLot);
 
 // Dashboard Stats
-router.get('/admin/dashboard-stats', authenticateToken, requireRole('ADMIN'), adminController.getDashboardStats);
+router.get('/admin/dashboard-stats', adminController.getDashboardStats);
 
 // Tariff Management
 router.get('/tariff', adminController.getTariff);

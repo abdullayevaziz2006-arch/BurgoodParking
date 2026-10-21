@@ -38,9 +38,9 @@ socket.on('open_barrier_cmd', async () => {
 
     if (devices.length === 0) {
       // Fallback: qurilma yo'q bo'lsa default
-      const defaultIps = ['10.70.5.7', '10.70.5.8'];
-      const defaultCreds = 'admin:Uranch135';
-      const variations = getBarrierRequests('iDS-TCM203-A');
+      const defaultIps = ['192.168.2.70', '192.168.2.64'];
+      const defaultCreds = 'admin:Q135246q';
+      const variations = getBarrierRequests('DS-TCG406');
       defaultIps.forEach(ip => {
         variations.forEach(v => {
           request(`http://${ip}${v.url}`, {
@@ -53,8 +53,8 @@ socket.on('open_barrier_cmd', async () => {
     } else {
       // Har bir qurilma uchun o'z modelini ishlatamiz
       devices.forEach(device => {
-        const model = device.model || 'iDS-TCM203-A';
-        const creds = `${device.username || 'admin'}:${device.password || 'Uranch135'}`;
+        const model = device.model || 'DS-TCG406';
+        const creds = `${device.username || 'admin'}:${device.password || 'Q135246q'}`;
         const variations = getBarrierRequests(model);
         variations.forEach(v => {
           request(`http://${device.ipAddress}${v.url}`, {

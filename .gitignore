@@ -2,36 +2,35 @@
 node_modules/
 **/node_modules/
 
-# Local databases and logs
+# Local databases and locks
 *.db
 *.db-journal
-*.log
-**/prisma/dev.db
-**/prisma/dev.db-journal
-**/*.log
+backend/prisma/dev.db
+backend/prisma/dev.db-journal
+!backend/prisma/dev.db.template
+
+# Snapshots and temporary scratch photos
+backend/public/uploads/snapshots/*
+!backend/public/uploads/snapshots/.gitkeep
+backend/uploads/
+backend/scratch_*.jpg
 
 # Environment variables
 .env
 **/.env
+!.env.example
+!**/.env.example
 
-# Production builds
-dist/
-**/dist/
-backend/public/assets/
-backend/public/index.html
-backend/public/favicon.svg
-backend/public/icons.svg
+# Local tools, standalone binaries & big packages
+node.exe
+git/
+*.zip
+*.log
+backend/*.log
+backend/scratch/
+SmartPark_Package/
+XPrinter_Driver_Setup_V7.77.exe
 
-# OS generated files
+# OS files
 .DS_Store
 Thumbs.db
-
-# Standalone binary and packages
-node.exe
-*.zip
-SmartPark_Package/
-Users/
-backend/scratch/
-backend/sync_debug.log
-backend/camera_debug.log
-

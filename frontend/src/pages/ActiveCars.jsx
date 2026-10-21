@@ -10,7 +10,8 @@ import {
   X, 
   CheckCircle, 
   AlertTriangle,
-  Clock
+  Clock,
+  Camera
 } from 'lucide-react';
 
 const ActiveCars = () => {
@@ -18,6 +19,7 @@ const ActiveCars = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('ALL'); // ALL, SUBSCRIBERS, REGULAR
+  const [viewPhoto, setViewPhoto] = useState(null); // Photo preview modal
   
   // Checkout modal state
   const [checkoutSession, setCheckoutSession] = useState(null);
@@ -32,7 +34,8 @@ const ActiveCars = () => {
     try {
       const response = await axios.get('/api/sessions');
       // Filter for active sessions only
-      const active = response.data.filter(s => s.status === 'ACTIVE');
+      const list = Array.isArray(response.data) ? response.data : (response.data?.sessions || []);
+      const active = list.filter(s => s.status === 'ACTIVE');
       setSessions(active);
     } catch (err) {
       console.error('Error fetching active sessions:', err.message);
@@ -99,15 +102,30 @@ const ActiveCars = () => {
     if (!tariff) return 0;
     
     const diffMs = new Date() - new Date(entryTime);
-    const diffMins = Math.ceil(diffMs / 60000);
+    const diffMins = Math.max(1, Math.ceil(diffMs / 60000));
+    const freeMinutes = tariff.freeMinutes ?? 10;
     
-    let billableMins = diffMins - tariff.freeMinutes;
-    if (billableMins <= 0) return 0;
+    if (diffMins <= freeMinutes) return 0;
     
-    let fee = billableMins * tariff.pricePerMin;
-    if (tariff.maxDaily && fee > tariff.maxDaily) fee = tariff.maxDaily;
+    const billingType = tariff.billingType || 'HOURLY';
+    if (billingType === 'FIXED') {
+      return tariff.fixedFee !== undefined ? tariff.fixedFee : 5000;
+    }
+    if (billingType === 'MINUTE') {
+      const pricePerMin = tariff.pricePerMin || 100;
+      const billableMins = Math.max(1, diffMins - freeMinutes);
+      return billableMins * pricePerMin;
+    }
     
-    return fee;
+    // HOURLY
+    const pricePerHour = tariff.pricePerHour || tariff.pricePerMin || 5000;
+    const maxHours = tariff.maxHours !== undefined && tariff.maxHours !== null ? tariff.maxHours : 4;
+    let billableHours = Math.ceil(diffMins / 60);
+    if (billableHours < 1) billableHours = 1;
+    if (maxHours > 0 && billableHours > maxHours) {
+      billableHours = maxHours;
+    }
+    return billableHours * pricePerHour;
   };
 
   const [currentTariff, setCurrentTariff] = useState(null);
@@ -122,11 +140,45 @@ const ActiveCars = () => {
   const handleCheckoutOpen = async (session) => {
     try {
       const isSub = session.car.isSubscriber && session.car.subscriberEnd && new Date(session.car.subscriberEnd) > new Date();
-      const fee = estimateFee(session.entryTime, isSub, currentTariff);
-      
-      const freeMinutes = (isSub || !currentTariff) ? 0 : currentTariff.freeMinutes;
       const diffMs = new Date() - new Date(session.entryTime);
-      const diffMins = Math.ceil(diffMs / 60000);
+      const diffMins = Math.max(1, Math.ceil(diffMs / 60000));
+      const freeMinutes = (isSub || !currentTariff) ? 0 : (currentTariff.freeMinutes ?? 10);
+      const billingType = currentTariff?.billingType || 'HOURLY';
+
+      let fee = 0;
+      let billableHours = 0;
+      let calculationText = '';
+
+      if (!isSub) {
+        if (diffMins <= freeMinutes) {
+          fee = 0;
+          calculationText = `Bepul vaqt (${freeMinutes} daq ichida)`;
+        } else if (billingType === 'FIXED') {
+          fee = currentTariff?.fixedFee !== undefined ? currentTariff.fixedFee : 5000;
+          calculationText = `Bir martalik to'lov: ${fee.toLocaleString()} so'm`;
+        } else if (billingType === 'MINUTE') {
+          const pricePerMin = currentTariff?.pricePerMin || 100;
+          const billableMins = Math.max(1, diffMins - freeMinutes);
+          fee = billableMins * pricePerMin;
+          calculationText = `${billableMins} daqiqa × ${pricePerMin} so'm = ${fee.toLocaleString()} so'm`;
+        } else {
+          const pricePerHour = currentTariff ? (currentTariff.pricePerHour || currentTariff.pricePerMin || 5000) : 5000;
+          const maxHours = currentTariff?.maxHours !== undefined && currentTariff?.maxHours !== null ? currentTariff.maxHours : 4;
+          billableHours = Math.ceil(diffMins / 60);
+          if (billableHours < 1) billableHours = 1;
+          if (maxHours > 0 && billableHours > maxHours) {
+            billableHours = maxHours;
+          }
+          fee = billableHours * pricePerHour;
+          calculationText = `${billableHours} soat × ${pricePerHour.toLocaleString()} so'm = ${fee.toLocaleString()} so'm`;
+        }
+      } else {
+        calculationText = 'VIP / Obunachi (Bepul)';
+      }
+
+      const durHrs = Math.floor(diffMins / 60);
+      const durMinsRem = diffMins % 60;
+      const durationText = durHrs > 0 ? (durMinsRem > 0 ? `${durHrs} soat ${durMinsRem} daqiqa` : `${durHrs} soat`) : `${durMinsRem} daqiqa`;
 
       setCheckoutAmount(fee);
       setCheckoutSession(session);
@@ -134,8 +186,11 @@ const ActiveCars = () => {
         plateNumber: session.car.plateNumber,
         entryTime: session.entryTime,
         durationMins: diffMins,
-        freeMinutes: freeMinutes,
-        overtimeMins: Math.max(0, diffMins - freeMinutes),
+        durationText,
+        billableHours,
+        billingType,
+        freeMinutes,
+        calculationText,
         fee
       });
       setPaymentMethod('CASH');
@@ -171,9 +226,6 @@ const ActiveCars = () => {
           amount: checkoutAmount
         });
       }
-      
-      // Auto open barrier for manual checkout
-      await axios.post('/api/barrier/open');
       
       setCheckoutSession(null);
       fetchSessions();
@@ -251,23 +303,24 @@ const ActiveCars = () => {
       </div>
 
       {/* Main Table */}
-      <div className="bg-white rounded-xl border border-surface-gray overflow-hidden">
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-academic-bg/40 border-b border-surface-gray text-[10px] font-bold text-muted-slate uppercase tracking-wider">
-                <th className="py-4 px-6">License Plate</th>
-                <th className="py-4 px-6">Entry Time</th>
-                <th className="py-4 px-6">Duration</th>
-                <th className="py-4 px-6">Accumulated Fee</th>
-                <th className="py-4 px-6 text-right">Actions</th>
+                <th className="py-4 px-6">Avto Raqam</th>
+                <th className="py-4 px-6">Rasm</th>
+                <th className="py-4 px-6">Kirish Vaqti</th>
+                <th className="py-4 px-6">Turgan Vaqti</th>
+                <th className="py-4 px-6">Hisoblangan To'lov</th>
+                <th className="py-4 px-6 text-right">Amallar</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-gray text-sm font-medium">
               {filteredSessions.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="py-12 text-center text-muted-slate text-xs font-semibold">
-                    No active sessions match the search/filter criteria.
+                  <td colSpan="6" className="py-12 text-center text-muted-slate text-xs font-semibold">
+                    Faol mashinalar ro'yxati bo'sh.
                   </td>
                 </tr>
               ) : (
@@ -282,22 +335,42 @@ const ActiveCars = () => {
                         {session.car.plateNumber}
                         {isSub ? (
                           <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold uppercase">
-                            Subscriber
+                            VIP
                           </span>
                         ) : (
                           <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-600 font-semibold uppercase">
-                            Regular
+                            Oddiy
                           </span>
+                        )}
+                      </td>
+
+                      {/* Photo Thumbnail */}
+                      <td className="py-2 px-6">
+                        {session.entryPhoto ? (
+                          <div 
+                            onClick={() => setViewPhoto({ url: session.entryPhoto, plate: session.car.plateNumber, time: session.entryTime })}
+                            className="relative group cursor-pointer w-16 h-10 rounded-lg overflow-hidden border border-surface-gray shadow-sm hover:ring-2 hover:ring-ranch-red transition-all"
+                            title="Rasmni kattalashtirish"
+                          >
+                            <img src={session.entryPhoto} alt="Mashina" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                            <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                              <Camera className="w-3.5 h-3.5 text-white" />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="w-16 h-10 rounded-lg bg-surface-gray/30 border border-surface-gray/50 flex items-center justify-center text-muted-slate" title="Rasm mavjud emas">
+                            <Car className="w-4 h-4 opacity-30" />
+                          </div>
                         )}
                       </td>
 
                       {/* Entry Time */}
                       <td className="py-4 px-6 text-muted-slate text-xs">
                         <span className="block font-semibold text-charcoal">
-                          {new Date(session.entryTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                          {new Date(session.entryTime).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' })}
                         </span>
                         <span className="block text-[10px] text-muted-slate mt-0.5">
-                          {new Date(session.entryTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          {new Date(session.entryTime).toLocaleDateString('uz-UZ', { month: 'short', day: 'numeric', year: 'numeric' })}
                         </span>
                       </td>
 
@@ -310,7 +383,7 @@ const ActiveCars = () => {
                       {/* Accumulated Fee */}
                       <td className="py-4 px-6 font-sans text-xs">
                         {isSub ? (
-                          <span className="text-emerald-600 font-bold">Free (Sub)</span>
+                          <span className="text-emerald-600 font-bold">Bepul (VIP)</span>
                         ) : (
                           <span className="text-charcoal font-bold font-sans">
                             {fee.toLocaleString('uz-UZ')} UZS
@@ -324,7 +397,7 @@ const ActiveCars = () => {
                           onClick={() => handleCheckoutOpen(session)}
                           className="px-3.5 py-1.5 bg-ranch-red text-white hover:bg-ranch-red/90 rounded-lg text-xs font-bold transition-all shadow-sm"
                         >
-                          Checkout / Release
+                          Chiqarish / To'lov
                         </button>
                       </td>
                     </tr>
@@ -335,6 +408,29 @@ const ActiveCars = () => {
           </table>
         </div>
       </div>
+
+      {/* Photo Preview Modal */}
+      {viewPhoto && (
+        <div className="fixed inset-0 z-50 bg-charcoal/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setViewPhoto(null)}>
+          <div className="bg-white rounded-2xl overflow-hidden max-w-2xl w-full shadow-2xl border border-surface-gray animate-scale-up" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-surface-gray flex items-center justify-between bg-academic-bg">
+              <div>
+                <h3 className="font-bold text-charcoal text-base flex items-center gap-2">
+                  <Camera className="w-5 h-5 text-ranch-red" />
+                  <span>Kirish fotosurati: <strong className="font-mono text-ranch-red">{viewPhoto.plate}</strong></span>
+                </h3>
+                <p className="text-xs text-muted-slate mt-0.5">{new Date(viewPhoto.time).toLocaleString('uz-UZ')}</p>
+              </div>
+              <button onClick={() => setViewPhoto(null)} className="p-1 rounded-lg text-muted-slate hover:bg-surface-gray hover:text-charcoal transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-3 bg-charcoal/5 flex items-center justify-center">
+              <img src={viewPhoto.url} alt="Mashina fotosurati" className="max-h-[70vh] w-auto object-contain rounded-xl shadow-inner border border-surface-gray" />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Checkout Payment Modal */}
       {checkoutSession && (
@@ -353,6 +449,15 @@ const ActiveCars = () => {
 
             {/* Modal Content */}
             <div className="p-6 space-y-5">
+              {checkoutSession.entryPhoto && (
+                <div className="w-full h-32 rounded-xl overflow-hidden border border-surface-gray shadow-inner relative group">
+                  <img src={checkoutSession.entryPhoto} alt="Mashina rasmi" className="w-full h-full object-cover" />
+                  <span className="absolute bottom-1.5 right-2 text-[10px] bg-black/60 text-white px-2 py-0.5 rounded font-medium backdrop-blur-sm">
+                    Kirish fotosurati
+                  </span>
+                </div>
+              )}
+
               <div className="p-4 bg-academic-bg border border-surface-gray rounded-xl space-y-3">
                 <div className="flex items-center justify-between border-b border-surface-gray/50 pb-2">
                   <span className="text-[10px] font-bold text-muted-slate uppercase tracking-wider">Avtomobil raqami</span>
@@ -367,20 +472,34 @@ const ActiveCars = () => {
                   
                   {checkoutDetails && (
                     <>
+                      <div className="text-muted-slate">Parkovkada turgan vaqti:</div>
+                      <div className="font-bold text-ranch-red text-right">
+                        {checkoutDetails.durationText || (
+                          Math.floor(checkoutDetails.durationMins / 60) > 0 
+                            ? `${Math.floor(checkoutDetails.durationMins / 60)} soat ${checkoutDetails.durationMins % 60} daqiqa`
+                            : `${checkoutDetails.durationMins} daqiqa`
+                        )}
+                      </div>
+
                       <div className="text-muted-slate">Bepul kutish vaqti:</div>
                       <div className="font-bold text-charcoal text-right">
-                        {checkoutDetails.freeMinutes} daqiqa
+                        {checkoutDetails.freeMinutes || 0} daqiqa
                       </div>
                       
-                      <div className="text-muted-slate">Ortiqcha turgan vaqti:</div>
-                      <div className="font-bold text-ranch-red text-right">
-                        {checkoutDetails.overtimeMins} daqiqa
-                      </div>
-                      
-                      <div className="text-muted-slate">Umumiy vaqt:</div>
+                      <div className="text-muted-slate">Tarif rejimi:</div>
                       <div className="font-bold text-charcoal text-right">
-                        {checkoutDetails.durationMins} daqiqa
+                        {checkoutDetails.billingType === 'FIXED' ? 'Fikslangan (Bir martalik)' :
+                         checkoutDetails.billingType === 'MINUTE' ? 'Minutbay' : 'Soatbay'}
                       </div>
+
+                      {checkoutDetails.calculationText && (
+                        <>
+                          <div className="text-muted-slate">Hisob-kitob:</div>
+                          <div className="font-bold text-charcoal text-right">
+                            {checkoutDetails.calculationText}
+                          </div>
+                        </>
+                      )}
                     </>
                   )}
                 </div>
